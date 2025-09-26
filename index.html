@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Viewer</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Main content area -->
+        <main class="main-content">
+            <div id="welcome" class="welcome-screen">
+                <div class="welcome-content">
+                    <h1>PDF Viewer</h1>
+                    <p>Open a PDF file to get started</p>
+                    <button id="welcomeOpenBtn" class="btn btn-primary btn-large">
+                        <span class="icon">📁</span>
+                        Choose PDF File
+                    </button>
+                </div>
+            </div>
+            
+            <div id="pdfContainer" class="pdf-container" style="display: none;">
+                <canvas id="pdfCanvas" class="pdf-canvas"></canvas>
+                <div id="loadingIndicator" class="loading-indicator" style="display: none;">
+                    <div class="spinner"></div>
+                    <p>Loading PDF...</p>
+                </div>
+            </div>
+        </main>
+
+        <!-- Color picker modal -->
+        <div id="colorPickerModal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Custom Color Scheme</h3>
+                    <button id="closeColorPicker" class="btn-close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="color-controls">
+                        <div class="color-group">
+                            <label for="foregroundColor">Foreground Color:</label>
+                            <input type="color" id="foregroundColor" value="#000000">
+                            <input type="text" id="foregroundHex" value="#000000" placeholder="#000000">
+                        </div>
+                        <div class="color-group">
+                            <label for="backgroundColor">Background Color:</label>
+                            <input type="color" id="backgroundColor" value="#ffffff">
+                            <input type="text" id="backgroundHex" value="#ffffff" placeholder="#ffffff">
+                        </div>
+                    </div>
+                    <div class="modal-actions">
+                        <button id="applyColors" class="btn btn-primary">Apply Colors</button>
+                        <button id="resetColors" class="btn">Reset to Default</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- PDF.js worker -->
+    <script src="node_modules/pdfjs-dist/build/pdf.worker.min.js"></script>
+    <script src="renderer.js"></script>
+</body>
+</html>

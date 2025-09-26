@@ -1,0 +1,33 @@
+{
+  "name": "pdf-viewer",
+  "version": "1.0.0",
+  "description": "A PDF viewer with Electron supporting live updates and color schemes",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder"
+  },
+  "keywords": ["pdf", "viewer", "electron", "color-schemes"],
+  "author": "Your Name",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^27.0.0",
+    "electron-builder": "^24.6.4"
+  },
+  "dependencies": {
+    "pdfjs-dist": "^3.11.174",
+    "chokidar": "^3.5.3"
+  },
+  "build": {
+    "appId": "com.example.pdf-viewer",
+    "productName": "PDF Viewer",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "**/*",
+      "!node_modules/**/*"
+    ]
+  }
+}
