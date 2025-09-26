@@ -16,7 +16,7 @@
     "electron-builder": "^24.6.4"
   },
   "dependencies": {
-    "pdfjs-dist": "^3.11.174",
+    "pdfjs-dist": "^4.0.379",
     "chokidar": "^3.5.3"
   },
   "build": {

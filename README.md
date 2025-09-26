@@ -4,12 +4,14 @@ A modern PDF viewer built with Electron that supports live updates and customiza
 
 ## Features
 
-- **PDF Viewing**: High-quality PDF rendering using PDF.js
+- **High-Resolution Vector Rendering**: Crisp, scalable PDF rendering using Mozilla PDF.js
 - **Live Updates**: Automatically reloads PDF when the file changes
 - **Color Schemes**: Multiple built-in themes (Light, Dark, Sepia) and custom color picker
 - **Navigation**: Page navigation with keyboard shortcuts
 - **Zoom Controls**: Zoom in/out with mouse wheel or keyboard shortcuts
 - **Modern UI**: Clean, responsive interface with dark/light themes
+- **Text Selection**: Full text selection and copying support
+- **Hardware Acceleration**: Optimized rendering performance
 
 ## Installation
 
@@ -63,9 +65,13 @@ The application automatically watches the currently open PDF file for changes. W
 ## Technical Details
 
 - **Electron**: Cross-platform desktop app framework
-- **PDF.js**: Mozilla's PDF rendering library
+- **Mozilla PDF.js**: Official Mozilla PDF rendering library with full feature support
 - **Chokidar**: File system watching for live updates
 - **Modern CSS**: Responsive design with CSS Grid and Flexbox
+- **High-DPI Support**: Vector-based rendering for crisp display on all screen densities
+- **Hardware Acceleration**: GPU-accelerated rendering for smooth performance
+- **Vector Graphics**: True vector-based rendering, not rasterized thumbnails
+- **High-Resolution Scaling**: Minimum 2x scaling for crisp text and graphics
 
 ## File Structure
 

@@ -1,8 +1,8 @@
 const { ipcRenderer } = require('electron');
 const pdfjsLib = require('pdfjs-dist');
 
-// Configure PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = './node_modules/pdfjs-dist/build/pdf.worker.min.js';
+// Configure PDF.js worker for Mozilla PDF.js
+pdfjsLib.GlobalWorkerOptions.workerSrc = require.resolve('pdfjs-dist/build/pdf.worker.min.js');
 
 class PDFViewer {
     constructor() {
@@ -12,6 +12,10 @@ class PDFViewer {
         this.scale = 1.0;
         this.rendering = false;
         this.currentPdfPath = null;
+        this.enableColorOverlay = false;
+        this.activeTheme = 'light';
+        this.maxDevicePixelRatio = 3; // cap to control memory/CPU
+        this.retinaBoostFactor = 1.5; // extra oversampling when zoomed out
         
         // High-DPI scaling - keep it simple
         this.devicePixelRatio = window.devicePixelRatio || 1;
@@ -22,17 +26,28 @@ class PDFViewer {
             background: '#ffffff'
         };
         
+        console.log('PDFViewer constructor - initializing...');
         this.initializeElements();
         this.bindEvents();
         this.setupIPC();
+        this.configureHighQualityRendering();
+        console.log('PDFViewer constructor - initialization complete');
     }
     
     initializeElements() {
+        console.log('initializeElements() called');
         // Main elements
         this.welcomeScreen = document.getElementById('welcome');
         this.pdfContainer = document.getElementById('pdfContainer');
         this.pdfCanvas = document.getElementById('pdfCanvas');
         this.loadingIndicator = document.getElementById('loadingIndicator');
+        
+        console.log('Main elements found:', {
+            welcomeScreen: !!this.welcomeScreen,
+            pdfContainer: !!this.pdfContainer,
+            pdfCanvas: !!this.pdfCanvas,
+            loadingIndicator: !!this.loadingIndicator
+        });
         
         // Welcome screen controls
         this.welcomeOpenBtn = document.getElementById('welcomeOpenBtn');
@@ -46,11 +61,38 @@ class PDFViewer {
         this.backgroundHex = document.getElementById('backgroundHex');
         this.applyColors = document.getElementById('applyColors');
         this.resetColors = document.getElementById('resetColors');
+        
+        console.log('initializeElements() complete');
+    }
+    
+    configureHighQualityRendering() {
+        // Configure canvas for high-quality vector rendering
+        if (this.pdfCanvas) {
+            // Set canvas attributes for maximum quality
+            this.pdfCanvas.style.imageRendering = 'high-quality';
+            this.pdfCanvas.style.imageRendering = 'crisp-edges';
+            
+            // Force hardware acceleration
+            this.pdfCanvas.style.transform = 'translateZ(0)';
+            this.pdfCanvas.style.willChange = 'transform';
+            this.pdfCanvas.style.backfaceVisibility = 'hidden';
+            
+            // Ensure crisp text rendering
+            this.pdfCanvas.style.textRendering = 'optimizeLegibility';
+            this.pdfCanvas.style.fontSmooth = 'always';
+            this.pdfCanvas.style.webkitFontSmoothing = 'antialiased';
+            this.pdfCanvas.style.mozOsxFontSmoothing = 'grayscale';
+        }
     }
     
     bindEvents() {
+        console.log('bindEvents() called');
         // File operations
-        this.welcomeOpenBtn.addEventListener('click', () => this.openFile());
+        console.log('Adding click listener to welcomeOpenBtn:', !!this.welcomeOpenBtn);
+        this.welcomeOpenBtn.addEventListener('click', () => {
+            console.log('Welcome open button clicked');
+            this.openFile();
+        });
         
         // Color picker modal
         this.closeColorPicker.addEventListener('click', () => this.closeColorPickerModal());
@@ -168,9 +210,14 @@ class PDFViewer {
     
     async openFile() {
         try {
+            console.log('openFile() called - requesting file dialog');
             const result = await ipcRenderer.invoke('show-open-dialog');
+            console.log('File dialog result:', result);
             if (!result.canceled && result.filePaths.length > 0) {
+                console.log('File selected:', result.filePaths[0]);
                 this.loadPdf(result.filePaths[0]);
+            } else {
+                console.log('No file selected or dialog canceled');
             }
         } catch (error) {
             console.error('Error opening file:', error);
@@ -179,19 +226,28 @@ class PDFViewer {
     
     async loadPdf(filePath) {
         try {
+            console.log('Loading PDF:', filePath);
             this.showLoading();
             this.currentPdfPath = filePath;
             
-            // Load PDF document
-            const loadingTask = pdfjsLib.getDocument(filePath);
+            // Load PDF document using Mozilla PDF.js
+            const loadingTask = pdfjsLib.getDocument({
+                url: filePath
+            });
+            
             this.pdfDoc = await loadingTask.promise;
+            console.log('PDF loaded successfully, pages:', this.pdfDoc.numPages);
             
             this.totalPages = this.pdfDoc.numPages;
             this.currentPage = 1;
             
             await this.renderPage();
+            console.log('Page rendered');
             this.showPdfViewer();
             this.updateControls();
+
+            // After first render, fit to screen height
+            this.fitHeight();
             
         } catch (error) {
             console.error('Error loading PDF:', error);
@@ -204,46 +260,54 @@ class PDFViewer {
     async renderPage() {
         if (!this.pdfDoc || this.rendering) return;
         
+        console.log('Starting renderPage, currentPage:', this.currentPage);
         this.rendering = true;
         
         try {
             const page = await this.pdfDoc.getPage(this.currentPage);
+            console.log('Page loaded, rendering...');
             
-            // Use device pixel ratio for crisp rendering
-            const actualScale = this.scale * this.devicePixelRatio;
-            const viewport = page.getViewport({ scale: actualScale });
+            // Compute HiDPI render settings to keep text crisp on Retina
+            const pixelRatio = this.getAdaptivePixelRatio();
+            const displayViewport = page.getViewport({ scale: this.scale });
+            console.log('Display viewport:', displayViewport.width, 'x', displayViewport.height, 'px, DPR:', pixelRatio);
             
-            // Set canvas dimensions for high-DPI
-            this.pdfCanvas.width = viewport.width;
-            this.pdfCanvas.height = viewport.height;
-            
-            // Set display size (CSS pixels)
-            this.pdfCanvas.style.width = (viewport.width / this.devicePixelRatio) + 'px';
-            this.pdfCanvas.style.height = (viewport.height / this.devicePixelRatio) + 'px';
+            // Canvas backing store size (device pixels)
+            const deviceWidth = Math.round(displayViewport.width * pixelRatio);
+            const deviceHeight = Math.round(displayViewport.height * pixelRatio);
+
+            // Apply sizes. CSS size stays in CSS pixels; backing store is multiplied by DPR
+            this.pdfCanvas.width = deviceWidth;
+            this.pdfCanvas.height = deviceHeight;
+            this.pdfCanvas.style.width = Math.round(displayViewport.width) + 'px';
+            this.pdfCanvas.style.height = Math.round(displayViewport.height) + 'px';
             
             const context = this.pdfCanvas.getContext('2d');
             
-            // Enable high-quality rendering
-            context.imageSmoothingEnabled = true;
-            context.imageSmoothingQuality = 'high';
+            // Disable image smoothing to keep text crisp at native scale
+            context.imageSmoothingEnabled = false;
+            context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
             
-            // Scale context for high-DPI
-            context.scale(this.devicePixelRatio, this.devicePixelRatio);
-            
-            // Apply custom colors
+            // Apply background behind page (in CSS pixel coords; context already scaled)
             context.fillStyle = this.colorScheme.background;
-            context.fillRect(0, 0, viewport.width / this.devicePixelRatio, viewport.height / this.devicePixelRatio);
+            context.fillRect(0, 0, Math.round(displayViewport.width), Math.round(displayViewport.height));
             
             const renderContext = {
                 canvasContext: context,
-                viewport: page.getViewport({ scale: this.scale }),
+                viewport: displayViewport,
                 intent: 'display'
             };
             
             await page.render(renderContext).promise;
+            console.log('Page render completed');
             
-            // Always apply color overlay for theme-based styling
-            this.applyColorOverlay();
+            // Optionally apply color overlay if enabled (may reduce sharpness)
+            if (this.enableColorOverlay) {
+                this.applyColorOverlay();
+            }
+
+            // Always (re)apply CSS filter for the current theme after rendering
+            this.applyThemeFilter();
             
         } catch (error) {
             console.error('Error rendering page:', error);
@@ -251,11 +315,19 @@ class PDFViewer {
             this.rendering = false;
         }
     }
+
+    getAdaptivePixelRatio() {
+        const dpr = window.devicePixelRatio || 1;
+        const boosted = this.scale < 1 ? Math.min(this.maxDevicePixelRatio, dpr * this.retinaBoostFactor) : dpr;
+        return Math.max(1, Math.min(this.maxDevicePixelRatio, boosted));
+    }
     
     applyColorOverlay() {
+        console.log('applyColorOverlay() called');
         const canvas = this.pdfCanvas;
         const ctx = canvas.getContext('2d');
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        console.log('Image data retrieved, applying color overlay...');
         const data = imageData.data;
         
         // Convert hex colors to RGB
@@ -368,6 +440,34 @@ class PDFViewer {
             this.updateControls();
         }
     }
+
+    // Fit the page width to a fraction of the current window width
+    async fitWidthFraction(fraction) {
+        try {
+            if (!this.pdfDoc) return; // wait until a PDF is loaded
+            const page = await this.pdfDoc.getPage(this.currentPage);
+            const viewport = page.getViewport({ scale: 1 });
+            const containerWidth = Math.max(1, window.innerWidth * (fraction || 0.5));
+            const newScale = containerWidth / viewport.width;
+            this.setZoom(newScale);
+        } catch (e) {
+            console.warn('fitWidthFraction failed (no PDF yet). It will apply after first load.');
+        }
+    }
+
+    // Fit the page height to the current window height
+    async fitHeight() {
+        try {
+            if (!this.pdfDoc) return;
+            const page = await this.pdfDoc.getPage(this.currentPage);
+            const viewport = page.getViewport({ scale: 1 });
+            const containerHeight = Math.max(1, window.innerHeight);
+            const newScale = containerHeight / viewport.height;
+            this.setZoom(newScale);
+        } catch (e) {
+            console.warn('fitHeight failed (no PDF yet). It will apply after first load.');
+        }
+    }
     
     updateControls() {
         // Controls are now handled by menu bar, no need to update UI elements
@@ -376,10 +476,13 @@ class PDFViewer {
     
     setTheme(theme) {
         document.body.setAttribute('data-theme', theme);
+        this.activeTheme = theme;
         
         if (theme === 'custom') {
+            this.enableColorOverlay = true;
             this.openColorPicker();
         } else {
+            this.enableColorOverlay = false;
             // Set theme-specific colors for PDF styling
             switch(theme) {
                 case 'light':
@@ -411,6 +514,9 @@ class PDFViewer {
                 this.renderPage();
             }
         }
+
+        // Apply CSS filter immediately for theme
+        this.applyThemeFilter();
     }
     
     openColorPicker() {
@@ -428,6 +534,7 @@ class PDFViewer {
     applyCustomColors() {
         this.colorScheme.foreground = this.foregroundColor.value;
         this.colorScheme.background = this.backgroundColor.value;
+        this.enableColorOverlay = true;
         
         if (this.pdfDoc) {
             this.renderPage();
@@ -439,6 +546,7 @@ class PDFViewer {
     resetCustomColors() {
         this.colorScheme.foreground = '#000000';
         this.colorScheme.background = '#ffffff';
+        this.enableColorOverlay = false;
         
         this.foregroundColor.value = this.colorScheme.foreground;
         this.backgroundColor.value = this.colorScheme.background;
@@ -449,6 +557,30 @@ class PDFViewer {
             this.renderPage();
         }
     }
+
+    applyThemeFilter() {
+        if (!this.pdfCanvas) return;
+        // Clear any existing filters by default
+        let filter = 'none';
+        switch (this.activeTheme) {
+            case 'dark':
+                // Invert + hue rotate is a common trick to approximate dark mode
+                // Fine-tuned for readability with slight contrast/brightness adjustments
+                filter = 'invert(1) hue-rotate(180deg) contrast(0.95) brightness(0.9)';
+                break;
+            case 'sepia':
+                filter = 'sepia(1) saturate(0.7) brightness(1.05)';
+                break;
+            case 'custom':
+                // Custom uses pixel overlay instead of CSS filter
+                filter = 'none';
+                break;
+            case 'light':
+            default:
+                filter = 'none';
+        }
+        this.pdfCanvas.style.filter = filter;
+    }
     
     reloadCurrentPdf() {
         if (this.currentPdfPath) {
@@ -457,8 +589,10 @@ class PDFViewer {
     }
     
     showPdfViewer() {
+        console.log('showPdfViewer() called - showing PDF container');
         this.welcomeScreen.style.display = 'none';
         this.pdfContainer.style.display = 'flex';
+        console.log('PDF container display set to flex');
     }
     
     showLoading() {
@@ -466,6 +600,7 @@ class PDFViewer {
     }
     
     hideLoading() {
+        console.log('hideLoading() called - hiding loading indicator');
         this.loadingIndicator.style.display = 'none';
     }
     
@@ -477,5 +612,8 @@ class PDFViewer {
 
 // Initialize the PDF viewer when the page loads
 document.addEventListener('DOMContentLoaded', () => {
-    new PDFViewer();
+    console.log('DOMContentLoaded - initializing PDFViewer');
+    const viewer = new PDFViewer();
+    // After first load, we'll fit to screen height
+    console.log('PDFViewer instance created');
 });

@@ -71,9 +71,20 @@ body {
     box-shadow: 0 4px 20px rgba(0,0,0,0.15);
     border-radius: 4px;
     background: white;
-    /* Smooth rendering for crisp text */
+    /* High-quality vector rendering */
     image-rendering: -webkit-optimize-contrast;
     image-rendering: high-quality;
+    image-rendering: crisp-edges;
+    image-rendering: pixelated;
+    /* Force hardware acceleration for better performance */
+    transform: translateZ(0);
+    will-change: transform;
+    backface-visibility: hidden;
+    /* Ensure crisp text rendering */
+    text-rendering: optimizeLegibility;
+    font-smooth: always;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 }
 
 /* Loading indicator */
