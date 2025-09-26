@@ -11,6 +11,7 @@ if (process.platform === 'darwin') {
 let mainWindow;
 let currentPdfPath = null;
 let watcher = null;
+let crispMode = true;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -89,6 +90,18 @@ function createMenu() {
           label: 'Toggle Fullscreen',
           accelerator: 'F11',
           click: () => mainWindow.setFullScreen(!mainWindow.isFullScreen())
+        },
+        { type: 'separator' },
+        {
+          label: 'Crisp Mode (disable recolor filters)',
+          type: 'checkbox',
+          checked: crispMode,
+          click: (item) => {
+            crispMode = item.checked;
+            if (mainWindow) {
+              mainWindow.webContents.send('set-sharp-mode', crispMode);
+            }
+          }
         }
       ]
     },

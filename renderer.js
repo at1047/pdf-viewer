@@ -16,6 +16,7 @@ class PDFViewer {
         this.activeTheme = 'light';
         this.maxDevicePixelRatio = 3; // cap to control memory/CPU
         this.retinaBoostFactor = 1.5; // extra oversampling when zoomed out
+        this.crispMode = true; // when true, avoid any filters/overlays
         
         // High-DPI scaling - keep it simple
         this.devicePixelRatio = window.devicePixelRatio || 1;
@@ -206,6 +207,16 @@ class PDFViewer {
         ipcRenderer.on('open-color-picker', () => {
             this.openColorPicker();
         });
+
+        ipcRenderer.on('set-sharp-mode', (event, enabled) => {
+            this.crispMode = !!enabled;
+            // In crisp mode, ensure filters are removed
+            if (this.crispMode) {
+                this.pdfCanvas.style.filter = 'none';
+                this.enableColorOverlay = false;
+            }
+            if (this.pdfDoc) this.renderPage();
+        });
     }
     
     async openFile() {
@@ -302,12 +313,16 @@ class PDFViewer {
             console.log('Page render completed');
             
             // Optionally apply color overlay if enabled (may reduce sharpness)
-            if (this.enableColorOverlay) {
+            if (!this.crispMode && this.enableColorOverlay) {
                 this.applyColorOverlay();
             }
 
             // Always (re)apply CSS filter for the current theme after rendering
-            this.applyThemeFilter();
+            if (!this.crispMode) {
+                this.applyThemeFilter();
+            } else {
+                this.pdfCanvas.style.filter = 'none';
+            }
             
         } catch (error) {
             console.error('Error rendering page:', error);
